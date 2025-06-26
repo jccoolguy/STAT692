@@ -5,86 +5,50 @@ format: pdf
 editor: visual
 ---
 
-```{r, loading packages}
+# Loading packages and data
+
+```{r}
 library(tidyverse)
+load("data_processed.RData")
 ```
 
-# Loading Data
+# Response variables
+
+Starting with numeric variables.
+
+Starting first with eggs laid:
 
 ```{r}
-data <- readxl::read_excel("Project2_S25_Data.xlsx")[,1:12]
+data_processed |> 
+  ggplot(aes(Num_Eggs_laid,result)) +
+  geom_boxplot()
 ```
+
+We can see that the number of eggs laid is a steady zero for when the tick dies. If the tick dies during oviposition the number of eggs laid is generally lower than when the tick lives. The variation in the number of eggs is also greater when the tick lives, compared to oviposition death. There exists one outlier value from the number of eggs being laid exceeds 6000. Lets look at that row:
 
 ```{r}
-data
+data_processed |> 
+  filter(Num_Eggs_laid > 6000)
 ```
 
-# Missing Data
+There does not appear to be anything suspicious about this observation, and it may indicate some right skew in the number of eggs laid variable. Generally, this is a symmetric distribution however.
+
+Let's look at the eggs laid across the vaccination groups:
 
 ```{r}
-na_count <- sapply(data, function(y) sum(length(which(is.na(y)))))
-na_count
+data_processed |> 
+  ggplot(aes(Num_Eggs_laid,Vaccine_Group)) +
+  geom_boxplot()
 ```
 
-We can see that there does not appear to be a lot of missing data on first glance, but after looking at the excel we can see that there does appear to be many "N/A" values. I also filter out the Comments column, because after reviewing the excel it seems it was only populated when there were extreme circumstances.
+Interestingly enough it appears that when the vaccine dose is low the lower number of eggs are laid. The control and the higher vaccine dose seem quite similar when it comes to this metric.
+
+This motivates me to take a look at another response variable we have, number of larvae. Lets see how this varies across vaccine groups:
 
 ```{r}
-data_no_coms <- data[,1:11]
-na_count_manual <- sapply(data_no_coms, function(y) sum(length(which(y == "N/A"))))
-na_count_manual
+data_processed |> 
+  ggplot(aes(Num_Larvae,result)) +
+  geom_boxplot()
 ```
 
-There appears to be a significant amount of data that is manually classified with "N/A". Lets see if they are often in the same row.
-
-```{r}
-data$na_count <- apply(data_no_coms, 1, function(x) sum(x == "N/A"|is.na(x)))
-table(data$na_count)
-```
-
-We can see that almost always missing values are grouped in the same row.
-
-# Deer groups:
-
-Client said there are three deer groups.
-
-```{r}
-table(data$Deer_ID)
-```
-
-We see 12 different Deer IDs, mostly evenly distributed data points. Will need to figure out how these are grouped. These deer have different vaccination statuses:
-
-```{r}
-data |> group_by(Deer_ID, Vaccine_Group) |> 
-  summarise(n = n()) |> 
-  View()
-```
-
-In some instances we have deer with the same ID but different vaccination status. This makes me question what the Deer ID variable means.
-
-# Vaccination Status
-
-```{r}
-table(data$Vaccine_Group)
-```
-
-There are four vaccine statuses. P - Pre-infested, C - Control, L - low, H - high.
-
-Lets take another look at the Deer_ID/Vaccinate status combinations with that in mind:
-
-```{r}
-data |> group_by(Deer_ID, Vaccine_Group) |> 
-  summarise(n = n()) |> 
-  View()
-```
-
-We can see that the duplicates in Deer_ID/Vaccination Status are due to that pre-infested group.
-
-# Infestation
-
-Next we look at the Infestation feature.
-
-```{r}
-table(data$Infestation)
-```
-
-We can see that the count decreases as the stage of infestation grows further, from 478 to 304.
+It seems we have discovered a couple of values that seem particularly in feasible. Lets look at those rows:
