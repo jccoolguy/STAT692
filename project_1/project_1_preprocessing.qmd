@@ -76,7 +76,7 @@ Lets handle the pre-processing of the mortality variable. I create a "result" fe
 
 ```{r}
 data$result <- case_when(
-  data$ovi_position == TRUE ~ "Oviposition Death",
+  data$ovi_position == TRUE & data$Mortality !=1 ~ "Oviposition Death",
   data$Mortality == 1 ~ "Death",
   data$Mortality == 0 ~ "Lives")
 ```
@@ -134,54 +134,218 @@ data |>
   filter(na_count %in%c(1,2,3,4) & grepl('Dram', data$Comments, ignore.case = TRUE))
 ```
 
-I think an acceptable approach for this situation would be to use a median imputation for each of the three missing values, choosing the median given the result = "Lives".
+In this case I think an acceptable approach is to use median imputation for the missing values from the group of surviving ticks.
 
 ```{r}
-median_percent_hatched <- median(as.numeric(data[data$result == "Lives", '%_Hatched']))
+hatched_data_lives = data |> 
+  filter(result == "Lives") |> 
+  select(Num_Eggs_laid, Num_Larvae)
+head(hatched_data_lives)
+hatched_data_median_lives = lapply(hatched_data_lives, function(x) median(as.numeric(x), na.rm = TRUE))
+hatched_data_median_lives
+hatched_data_median_hatched_percent = hatched_data_median_lives$Num_Larvae/hatched_data_median_lives$Num_Eggs_laid
 ```
 
-# Deer groups:
-
-Client said there are three deer groups.
+Now we substitute in these values into the missing values from earlier:
 
 ```{r}
-table(data$Deer_ID)
+data <- data |> mutate(Num_Eggs_laid = ifelse(na_count == "3" & grepl('Dram', data$Comments, ignore.case = TRUE),hatched_data_median_lives$Num_Eggs_laid, Num_Eggs_laid)) |> 
+  mutate(Num_Larvae = ifelse(na_count == "3" & grepl('Dram', data$Comments, ignore.case = TRUE), hatched_data_median_lives$Num_Larvae, Num_Larvae)) |> 
+  mutate(`%_Hatched` = ifelse(na_count == "3" & grepl('Dram', data$Comments, ignore.case = TRUE), hatched_data_median_hatched_percent, `%_Hatched`))
 ```
 
-We see 12 different Deer IDs, mostly evenly distributed data points. Will need to figure out how these are grouped. These deer have different vaccination statuses:
+Let's see how many missing values still exist:
 
 ```{r}
-data |> group_by(Deer_ID, Vaccine_Group) |> 
-  summarise(n = n()) |> 
+data$na_count_2 <- apply(data[,-12], 1, function(x) sum(x == "N/A"|is.na(x)))
+table(data$na_count_2)
+```
+
+```{r}
+data |> filter(na_count_2 != 0) |> 
   View()
 ```
 
-In some instances we have deer with the same ID but different vaccination status. This makes me question what the Deer ID variable means.
+# % Hatched
 
-# Vaccination Status
-
-```{r}
-table(data$Vaccine_Group)
-```
-
-There are four vaccine statuses. P - Pre-infested, C - Control, L - low, H - high.
-
-Lets take another look at the Deer_ID/Vaccinate status combinations with that in mind:
+Lets try to understand the % hatched variable. It appears it is a computation of num_larvae/num_eggs_laid.
 
 ```{r}
-data |> group_by(Deer_ID, Vaccine_Group) |> 
-  summarise(n = n()) |> 
-  View()
+data <- data |> 
+  mutate(percent_hatched = ifelse(Num_Eggs_laid != "0",100*as.numeric(Num_Larvae)/as.numeric(Num_Eggs_laid),0))
 ```
 
-We can see that the duplicates in Deer_ID/Vaccination Status are due to that pre-infested group.
-
-# Infestation
-
-Next we look at the Infestation feature.
+I want to see if these calculations always match up:
 
 ```{r}
-table(data$Infestation)
+data |> 
+  filter(percent_hatched != 0) |> 
+  mutate(percent_compare = abs(percent_hatched - as.numeric(`%_Hatched`))) |> 
+  filter(percent_compare > .05) |> 
+  select(Num_Eggs_laid,Num_Larvae,percent_hatched,`%_Hatched`,percent_compare)
 ```
 
-We can see that the count decreases as the stage of infestation grows further, from 478 to 304.
+We can see that generally speaking the calculated formula is in line with %\_Hatched. There are some instances of large differences, but I'd rather trust the count of num larvae than rely on the percentage which could be a manual error.
+
+With this in mind, there are some instances where the %hatched was estimate at 2 weeks instead of waiting. And it seems those values were not recorded. So I will take the median of our percent hatched variable and impute them into those values, and then calculate the num larvae.
+
+```{r}
+percent_hatched_median_lives = median(data[data$percent_hatched !=0,]$percent_hatched,na.rm = TRUE)
+data <- data |> mutate(percent_hatched = ifelse(Num_Eggs_laid != "0" & na_count_2 == 2, percent_hatched_median_lives, percent_hatched)) |> 
+  mutate(Num_Larvae = ifelse(Num_Eggs_laid != "0" & na_count_2 == 2,
+                             round(as.numeric(Num_Eggs_laid)*percent_hatched_median_lives),
+                             Num_Larvae))
+```
+
+Lets now see the remaining NA values:
+
+```{r}
+#data <- data |> select(-`%_Hatched`)
+data$na_count_3 <- apply(data[,-c(9,12)], 1, function(x) sum(x == "N/A"|is.na(x)))
+table(data$na_count_3)
+```
+
+```{r}
+data |> 
+  filter(na_count_3 != 0)
+```
+
+Since there is no mention of measurement error on the remaining missings that have no data on num eggs laid and num larve and no recorded % Hatched, I will set them to zero.
+
+```{r}
+data <- data |> 
+  mutate(mark = (Num_Eggs_laid == "N/A"|is.na(Num_Eggs_laid))&(Num_Larvae == "N/A"|is.na(Num_Larvae))&(`%_Hatched`=="N/A"|is.na(`%_Hatched`))) |>
+  mutate(Num_Eggs_laid = ifelse(mark,0,Num_Eggs_laid)) |> 
+  mutate(Num_Larvae = ifelse(mark,0,Num_Larvae)) |> 
+  mutate(percent_hatched = ifelse(mark,0,percent_hatched)) |> 
+  select(-mark)
+```
+
+Lets do a final check on NAs:
+
+```{r}
+data$na_count_4 <- apply(data[,c(-9,-12)], 1, function(x) sum(x == "N/A"|is.na(x)))
+table(data$na_count_4)
+```
+
+Looking at those rows:
+
+```{r}
+data |> filter(na_count_4 != 0)
+```
+
+There is one situation where we have % Hatched and Num Eggs Laid, but no record on larvae hatched and percent hatched. Lets use a computation to fix that:
+
+```{r}
+data <- data |> 
+  mutate(mark = Tick_ID == "801_92") |> 
+  mutate(percent_hatched = ifelse(mark, as.numeric(`%_Hatched`),percent_hatched)) |> 
+  mutate(Num_Larvae = ifelse(mark,round(as.numeric(Num_Eggs_laid)*percent_hatched),
+                             Num_Larvae))
+```
+
+Lets see whats left:
+
+```{r}
+data$na_count_5 <- apply(data[,c(-9,-12)], 1, function(x) sum(x == "N/A"|is.na(x)))
+table(data$na_count_5)
+```
+
+```{r}
+data |> 
+  filter(na_count_5!=0)
+```
+
+For tick 800_15 it appears this should be treated as a usual tick death, there is no evidence of eggs being laid.
+
+```{r}
+data <- data |>
+  mutate(mark = Tick_ID == "800_15") |> 
+  mutate(`Weight_ Egg_Mass(g)` = ifelse(mark,0,`Weight_ Egg_Mass(g)`)) |> 
+  mutate(`Bloodmeal_Conversion(%)` = ifelse(mark,0,`Bloodmeal_Conversion(%)`))
+  
+```
+
+The final NA check:
+
+```{r}
+data$na_count_6 <- apply(data[,c(-9,-12)], 1, function(x) sum(x == "N/A"|is.na(x)))
+table(data$na_count_6)
+```
+
+```{r}
+data |> 
+  filter(na_count_6 != 0)
+```
+
+In this case we have evidence of hatching, but we don't know the number of eggs laid or larvae. I choose a median imputation for num eggs laid given the tick lives, then computing the num larvae/
+
+```{r}
+med_imput_data = data |> filter(Mortality == 0) |> select(Num_Eggs_laid)
+med_imput = as.numeric(median(as.numeric(med_imput_data$Num_Eggs_laid),na.rm = TRUE))
+```
+
+```{r}
+data <- data |>
+  mutate(Num_Eggs_laid = ifelse(na_count_6 != 0, med_imput, Num_Eggs_laid)) |>
+  mutate(percent_hatched = ifelse(na_count_6 != 0,as.numeric(`%_Hatched`), percent_hatched)) |> 
+  mutate(Num_Larvae = ifelse(na_count_6 != 0, percent_hatched/100 * as.numeric(Num_Eggs_laid), Num_Larvae))
+```
+
+Final NA check:
+
+```{r}
+data$na_count_7 <- apply(data[,c(-9,-12)], 1, function(x) sum(x == "N/A"|is.na(x)))
+table(data$na_count_7)
+```
+
+Great, there are no more missings. Lets convert our data to the correct types:
+
+# Data Conversion
+
+First lets drop columns that won't be needed moving forward.
+
+```{r}
+colnames(data)
+```
+
+```{r}
+data <- data[,-c(9,13,16,18,19,20,21,22,23)]
+```
+
+Now we need to convert our data into the correct types per variable:
+
+```{r}
+colnames(data)
+numeric_variables = colnames(data)[c(6,7,8,9,10,14)]
+numeric_variables
+```
+
+```{r}
+factor_variables = colnames(data)[c(2,3,4,5,13)]
+factor_variables
+```
+
+```{r}
+char_variables = colnames(data)[c(1,11)]
+```
+
+```{r}
+data_processed = data |> 
+  mutate(across(all_of(numeric_variables),as.numeric)) |> 
+  mutate(across(all_of(factor_variables),as.factor)) |> 
+  mutate(across(all_of(char_variables),as.character)) |> 
+  mutate(Comments = ifelse(is.na(Comments),"",Comments))
+```
+
+lets see if there are NAs that occurred here:
+
+```{r}
+anyNA(data_processed)
+```
+
+Saving down processed data:
+
+```{r}
+save(data_processed, file = "data_processed.RData")
+```
