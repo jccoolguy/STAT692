@@ -1,0 +1,187 @@
+---
+title: "Project 1 Exploratory Analysis"
+author: "Jack Cunningham"
+format: pdf
+editor: visual
+---
+
+```{r, loading packages}
+library(tidyverse)
+```
+
+# Loading Data
+
+```{r}
+data <- readxl::read_excel("Project2_S25_Data.xlsx")[,1:12]
+```
+
+```{r}
+data
+```
+
+# Missing Data
+
+```{r}
+na_count <- sapply(data, function(y) sum(length(which(is.na(y)))))
+na_count
+```
+
+We can see that there does not appear to be a lot of missing data on first glance, but after looking at the excel we can see that there does appear to be many "N/A" values. I also filter out the Comments column, because after reviewing the excel it seems it was only populated when there were extreme circumstances.
+
+```{r}
+data_no_coms <- data[,1:11]
+na_count_manual <- sapply(data_no_coms, function(y) sum(length(which(y == "N/A"))))
+na_count_manual
+```
+
+There appears to be a significant amount of data that is manually classified with "N/A". Lets see if they are often in the same row.
+
+```{r}
+data$na_count <- apply(data_no_coms, 1, function(x) sum(x == "N/A"|is.na(x)))
+table(data$na_count)
+```
+
+We can see that almost always missing values are grouped in the same row.
+
+When reviewing the excel document it appears that when the five values are all N/As its due to the tick dying. Let's see:
+
+```{r}
+data |> group_by(Mortality, na_count) |> 
+  summarise(n = n())
+```
+
+It appears this trend holds with the exception of 4 ticks who died but have no missing records. Lets look at those:
+
+```{r}
+data |> filter(Mortality == 1 & na_count == 0)
+```
+
+Three out of the four "died during oviposition". That is a common comment in this data set. Lets see how many rows discuss a death during oviposition.
+
+```{r}
+data |> filter(grepl('position|ovi&died', Comments, ignore.case =  TRUE))
+```
+
+# Oviposition
+
+Oviposition is the process of laying or depositing eggs. I deem this as a middle ground between an outright death for a tick and the tick surviving. In an ideal world a vaccinated deer would leave a tick dead, in the worst world the tick would survive. Maybe when a tick dies during oviposition the number of hatched eggs is smaller.
+
+```{r}
+data$ovi_position <- grepl('position|ovi', data$Comments, ignore.case = TRUE)
+```
+
+# Redefining The Mortality Variable
+
+Lets handle the pre-processing of the mortality variable. I create a "result" feature, it is set as "death", "oviposition death", "no death".
+
+```{r}
+data$result <- case_when(
+  data$ovi_position == TRUE ~ "Oviposition Death",
+  data$Mortality == 1 ~ "Death",
+  data$Mortality == 0 ~ "Lives")
+```
+
+```{r}
+table(data$result)
+```
+
+# Handling NAs
+
+Now we have an idea of why we are getting NA values. They primarily come from situations where the tick dies and thus no outcome data is recorded. As seen below:
+
+```{r}
+data |> filter(result == "Death") |> 
+  group_by(na_count) |> 
+  summarise(n = n())
+```
+
+There is still one pesky row, lets take a look at it:
+
+```{r}
+data |> filter(result == "Death"& na_count == 0)
+```
+
+Based on the information here, I think this is best categorized as an "Oviposition death".
+
+```{r}
+data$result <- ifelse(data$result == "Death" & data$na_count == 0, 
+                      "Oviposition Death",data$result)
+```
+
+Now lets set those NAs as zero:
+
+```{r}
+data$`Weight_ Egg_Mass(g)` <- ifelse(data$result == "Death", 0, data$`Weight_ Egg_Mass(g)`)
+data$`Bloodmeal_Conversion(%)` <- ifelse(data$result == "Death", 0, data$`Bloodmeal_Conversion(%)`)
+data$`%_Hatched` <- ifelse(data$result == "Death", 0, data$`%_Hatched`)
+data$Num_Eggs_laid <- ifelse(data$result == "Death", 0, data$Num_Eggs_laid)
+data$Num_Larvae <- ifelse(data$result == "Death", 0, data$Num_Larvae)
+```
+
+Now lets handle the remaining NAs. Lets first analyze those rows before deciding how to proceed:
+
+```{r}
+data |> 
+  filter(na_count %in%c(1,2,3,4))
+```
+
+Since there are only 15 columns I feel its worth taking a look at each situation.
+
+The first situation is "dram spilled no hatch data collected":
+
+```{r}
+data |> 
+  filter(na_count %in%c(1,2,3,4) & grepl('Dram', data$Comments, ignore.case = TRUE))
+```
+
+I think an acceptable approach for this situation would be to use a median imputation for each of the three missing values, choosing the median given the result = "Lives".
+
+```{r}
+median_percent_hatched <- median(as.numeric(data[data$result == "Lives", '%_Hatched']))
+```
+
+# Deer groups:
+
+Client said there are three deer groups.
+
+```{r}
+table(data$Deer_ID)
+```
+
+We see 12 different Deer IDs, mostly evenly distributed data points. Will need to figure out how these are grouped. These deer have different vaccination statuses:
+
+```{r}
+data |> group_by(Deer_ID, Vaccine_Group) |> 
+  summarise(n = n()) |> 
+  View()
+```
+
+In some instances we have deer with the same ID but different vaccination status. This makes me question what the Deer ID variable means.
+
+# Vaccination Status
+
+```{r}
+table(data$Vaccine_Group)
+```
+
+There are four vaccine statuses. P - Pre-infested, C - Control, L - low, H - high.
+
+Lets take another look at the Deer_ID/Vaccinate status combinations with that in mind:
+
+```{r}
+data |> group_by(Deer_ID, Vaccine_Group) |> 
+  summarise(n = n()) |> 
+  View()
+```
+
+We can see that the duplicates in Deer_ID/Vaccination Status are due to that pre-infested group.
+
+# Infestation
+
+Next we look at the Infestation feature.
+
+```{r}
+table(data$Infestation)
+```
+
+We can see that the count decreases as the stage of infestation grows further, from 478 to 304.

@@ -1,0 +1,90 @@
+---
+title: "Project 1 Exploratory Analysis"
+author: "Jack Cunningham"
+format: pdf
+editor: visual
+---
+
+```{r, loading packages}
+library(tidyverse)
+```
+
+# Loading Data
+
+```{r}
+data <- readxl::read_excel("Project2_S25_Data.xlsx")[,1:12]
+```
+
+```{r}
+data
+```
+
+# Missing Data
+
+```{r}
+na_count <- sapply(data, function(y) sum(length(which(is.na(y)))))
+na_count
+```
+
+We can see that there does not appear to be a lot of missing data on first glance, but after looking at the excel we can see that there does appear to be many "N/A" values. I also filter out the Comments column, because after reviewing the excel it seems it was only populated when there were extreme circumstances.
+
+```{r}
+data_no_coms <- data[,1:11]
+na_count_manual <- sapply(data_no_coms, function(y) sum(length(which(y == "N/A"))))
+na_count_manual
+```
+
+There appears to be a significant amount of data that is manually classified with "N/A". Lets see if they are often in the same row.
+
+```{r}
+data$na_count <- apply(data_no_coms, 1, function(x) sum(x == "N/A"|is.na(x)))
+table(data$na_count)
+```
+
+We can see that almost always missing values are grouped in the same row.
+
+# Deer groups:
+
+Client said there are three deer groups.
+
+```{r}
+table(data$Deer_ID)
+```
+
+We see 12 different Deer IDs, mostly evenly distributed data points. Will need to figure out how these are grouped. These deer have different vaccination statuses:
+
+```{r}
+data |> group_by(Deer_ID, Vaccine_Group) |> 
+  summarise(n = n()) |> 
+  View()
+```
+
+In some instances we have deer with the same ID but different vaccination status. This makes me question what the Deer ID variable means.
+
+# Vaccination Status
+
+```{r}
+table(data$Vaccine_Group)
+```
+
+There are four vaccine statuses. P - Pre-infested, C - Control, L - low, H - high.
+
+Lets take another look at the Deer_ID/Vaccinate status combinations with that in mind:
+
+```{r}
+data |> group_by(Deer_ID, Vaccine_Group) |> 
+  summarise(n = n()) |> 
+  View()
+```
+
+We can see that the duplicates in Deer_ID/Vaccination Status are due to that pre-infested group.
+
+# Infestation
+
+Next we look at the Infestation feature.
+
+```{r}
+table(data$Infestation)
+```
+
+We can see that the count decreases as the stage of infestation grows further, from 478 to 304.
