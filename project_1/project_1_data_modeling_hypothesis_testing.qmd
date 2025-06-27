@@ -1,0 +1,14 @@
+---
+title: "Data Modeling and Hypothesis Testing"
+author: "Jack Cunningham"
+format: html
+editor: visual
+---
+
+# Contrasts to test
+
+Vaccination group vs non-vaccination group on Number of Larvae and Mortality.
+
+Vaccination dosage, low or high.
+
+Does the vaccine lose effectiveness over the course of the experiment.
