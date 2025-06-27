@@ -193,7 +193,7 @@ With this in mind, there are some instances where the %hatched was estimate at 2
 percent_hatched_median_lives = median(data[data$percent_hatched !=0,]$percent_hatched,na.rm = TRUE)
 data <- data |> mutate(percent_hatched = ifelse(Num_Eggs_laid != "0" & na_count_2 == 2, percent_hatched_median_lives, percent_hatched)) |> 
   mutate(Num_Larvae = ifelse(Num_Eggs_laid != "0" & na_count_2 == 2,
-                             round(as.numeric(Num_Eggs_laid)*percent_hatched_median_lives),
+                             round(as.numeric(Num_Eggs_laid)*percent_hatched_median_lives/100),
                              Num_Larvae))
 ```
 
@@ -240,7 +240,7 @@ There is one situation where we have % Hatched and Num Eggs Laid, but no record 
 data <- data |> 
   mutate(mark = Tick_ID == "801_92") |> 
   mutate(percent_hatched = ifelse(mark, as.numeric(`%_Hatched`),percent_hatched)) |> 
-  mutate(Num_Larvae = ifelse(mark,round(as.numeric(Num_Eggs_laid)*percent_hatched),
+  mutate(Num_Larvae = ifelse(mark,round(as.numeric(Num_Eggs_laid)*percent_hatched/100),
                              Num_Larvae))
 ```
 
@@ -342,6 +342,30 @@ lets see if there are NAs that occurred here:
 
 ```{r}
 anyNA(data_processed)
+```
+
+# Fixing when Number Larvae is greater Num Eggs Laid
+
+```{r}
+data_processed = data_processed |> 
+  mutate(mark = Num_Larvae > Num_Eggs_laid) |>
+  mutate(correct_larve = ifelse(mark,Num_Eggs_laid,Num_Larvae)) |>
+  mutate(correct_eggs = ifelse(mark,Num_Larvae,Num_Eggs_laid)) |> 
+  mutate(Num_Larvae = correct_larve) |> 
+  mutate(Num_Eggs_laid = correct_eggs) |> 
+  mutate(percent_hatched = ifelse(mark,Num_Larvae/Num_Eggs_laid,percent_hatched)) |> select(-mark,-correct_larve,-correct_eggs)
+  
+```
+
+# Leveling Factors
+
+```{r}
+data_processed$Infestation <- factor(data_processed$Infestation, 
+                                     levels = c("PRE","FIRST","SECOND","THIRD"))
+data_processed$result <- factor(data_processed$result,
+                                levels = c("Death","Oviposition Death","Lives"))
+data_processed$Vaccine_Group <- factor(data_processed$Vaccine_Group,
+                                       levels = c("P","C","L","H"))
 ```
 
 Saving down processed data:
