@@ -5,6 +5,13 @@ format: html
 editor: visual
 ---
 
+# Loading data/packages
+
+```{r}
+library(tidyverse)
+load("data_processed.RData")
+```
+
 # Contrasts to test
 
 Vaccination group vs non-vaccination group on Number of Larvae and Mortality.
@@ -12,3 +19,301 @@ Vaccination group vs non-vaccination group on Number of Larvae and Mortality.
 Vaccination dosage, low or high.
 
 Does the vaccine lose effectiveness over the course of the experiment.
+
+# Experimental Design
+
+We have 12 experimental units, the deer. Some deer are pre infested, and that data is collected as a baseline before vaccines are applied.
+
+There are three treatments, the vaccination a deer receives. It has three levels, Control, Low, and High.
+
+The measurement unit is a tick, there were plans for 50 ticks for each deer but in the experiment this was not adhered to.
+
+There are repeated measurements as the experiment was performed three times with a new group of 50 ticks to examine the vaccination effectiveness over time.
+
+The response variables are the mortality, and measurements of egg quality if the tick laid them.
+
+There was one covariate, the weight of the tick before being attached to the deer.
+
+# Collapsed Data for Plotting
+
+```{r}
+grouped_data <- data_no_pre |> 
+  group_by(Deer_ID, Vaccine_Group, Infestation) |> 
+  summarise(Mortality_percent = mean(Mortality==1), avg_larvae = mean(Num_Larvae)
+            , n = n(), avg_weight = mean(`Weight_Replete_Female(g)`))
+```
+
+# Model Considerations
+
+```{r}
+data_processed |>
+  filter(Infestation == "PRE") |> 
+  select(Deer_ID) |> 
+  unique()
+```
+
+Since only six of the deer have observed pre-infestation testing, for simplicity and since our is to measure the time and overall effect of vaccines we will filter out that data:
+
+```{r}
+data_no_pre <- data_processed |> 
+  filter(Infestation != "PRE")
+```
+
+Lets see if there are any hints towards to a time trend in this data, particularly focusing on the vaccinated groups:
+
+```{r}
+grouped_data |>
+  filter(Vaccine_Group != "C") |> 
+  ggplot(aes(x = Infestation, y = Mortality_percent, group = Deer_ID)) +
+  geom_line(aes(color = Deer_ID)) +
+  geom_point(aes(color = Deer_ID)) +
+  facet_wrap(~Vaccine_Group)
+```
+
+In the low vaccination group it looks like the vaccine becomes more effective over time, in the high vaccination group it is more mixed but it appears the vaccine loses effectiveness.
+
+```{r}
+grouped_data |>
+  filter(Vaccine_Group != "C") |> 
+  ggplot(aes(x = Infestation, y = avg_larvae, group = Deer_ID)) +
+  geom_line(aes(color = Deer_ID)) +
+  geom_point(aes(color = Deer_ID)) +
+  facet_wrap(~ Vaccine_Group)
+```
+
+In the low vaccination group it looks like the vaccine becomes more effective over time at limiting larvae births, in the high vaccination group it is more mixed but it appears the vaccine loses effectiveness.
+
+It does appear there is a time effect in this data. And there also appears to be an interaction between the vaccine group and the infestation time.
+
+# Distribution of Response Variables
+
+```{r}
+qqnorm(grouped_data$Mortality_percent)
+qqline(grouped_data$Mortality_percent)
+```
+
+```{r}
+qqnorm(grouped_data$avg_larvae)
+qqline(grouped_data$avg_larvae)
+shapiro.test(grouped_data$avg_larvae)
+```
+
+# Model
+
+Discussion:
+
+This is not exactly a repeated measures problem, we are using a new set of ticks each time we perform the experiment. Additionally we are not given information on the time gaps between experiments, whether they were evenly spaced/the order of examination between each group. For that reason I will treat the time factor as an additional factor in the experiment.
+
+This leaves us with a 3x3 experimental design, Vaccine x Infestation, with 4 deer in each group and an uneven number of ticks being treated as a sub sample.
+
+```{r}
+library(lme4)
+model_1 <- lmer(Num_Larvae ~ (1|`Weight_Replete_Female(g)`)+ (1|Deer_ID) 
+                + Infestation + Vaccine_Group + Vaccine_Group*Infestation 
+                ,data = data_no_pre)
+summary(model_1)
+```
+
+```{r}
+plot(model_1)
+```
+
+```{r}
+qqnorm(residuals(model_1))
+qqline(residuals(model_1))
+```
+
+```{r}
+ggplot(as.data.frame(residuals(model_1)), aes(x = `residuals(model_1)`))+
+  geom_density()
+```
+
+```{r}
+model_2 <- lmer(Num_Larvae ~ (1|`Weight_Replete_Female(g)`)+ (1|Deer_ID) 
+                + Infestation + Vaccine_Group + Vaccine_Group*Infestation 
+                ,data = data_no_pre)
+summary(model_2)
+```
+
+```{r}
+data_no_pre |> 
+  ggplot(aes(x = Num_Larvae))+
+  geom_density()
+```
+
+# Model 3
+
+```{r}
+model_3 <- lmer(avg_larvae ~ avg_weight+ (1|Deer_ID) 
+                + Infestation + Vaccine_Group + Vaccine_Group*Infestation 
+                ,data = grouped_data)
+summary(model_3)
+```
+
+```{r}
+plot(model_3)
+```
+
+```{r}
+qqnorm(residuals(model_3))
+qqline(residuals(model_3))
+```
+
+```{r}
+model_4 <- lm(avg_larvae ~ avg_weight + Vaccine_Group*Infestation 
+                ,data = grouped_data)
+summary(model_4)
+```
+
+# Model Scheme
+
+First we want to model the mortality rate of the ticks:
+
+```{r}
+model_mortality_1 <- glm(Mortality ~ `Weight_Replete_Female(g)`+ 
+                        Vaccine_Group + Infestation + Vaccine_Group*Infestation,
+                        data = data_no_pre, family = "binomial")
+summary(model_mortality_1)
+```
+
+# Contrasts and Model Results
+
+```{r}
+emm1 = emmeans(model_mortality_1, specs = ~ Vaccine_Group*Infestation, type = "response")
+em_df = as.data.frame(emm1)
+```
+
+```{r}
+em_df |> 
+  ggplot(aes(x = Infestation, y = prob, color = Vaccine_Group, 
+             group = Vaccine_Group)) + 
+  geom_point() +
+  geom_line() +
+  geom_errorbar(aes(ymin = asymp.LCL,ymax = asymp.UCL, width = .1))
+```
+
+# Which Vaccination Group is most effective
+
+```{r}
+main_contrasts = emmeans(model_mortality_1, specs = pairwise ~ Vaccine_Group, 
+                         type = "response")$contrasts |> 
+                        as.data.frame()
+main_contrasts |> 
+  ggplot(aes(x = contrast, y = odds.ratio)) +
+  geom_point() +
+  geom_abline(intercept = 1, slope = 0, color = "red") +
+  geom_errorbar(aes(ymin = odds.ratio - 2*SE,ymax = odds.ratio + 2*SE, width = .1)) +
+  geom_text(aes(label = round(p.value,3)),nudge_x = .15) +
+  ylab("Odds Ratio") +
+  xlab("Contrast") +
+  labs(title = "Vaccine Group Effects")
+  
+
+```
+
+# Larvae Modeling
+
+The first goal of vaccination is for to ticks to die. If ticks do not die, the hope is that vaccination will limit the number of larvae that are produced by the ticks.
+
+To model the larvae, we must first filter out ticks that die before giving birth as we have analyzed vaccine effectiveness for that goal in our model.
+
+```{r}
+data_no_death = data_no_pre |> 
+  filter(Num_Larvae != 0 & Mortality != 1)
+```
+
+We will examine the distribution of larvae after removing cases where a tick dies before giving birth.
+
+```{r}
+data_no_death |> 
+  ggplot(aes(x = Num_Larvae)) +
+  geom_density()
+```
+
+QQplots:
+
+```{r}
+qqnorm(data_no_death$Num_Larvae)
+qqline(data_no_death$Num_Larvae)
+shapiro.test(data_no_death$Num_Larvae)
+```
+
+Clear normality break here. Lets try a box-cox transformation:
+
+```{r}
+library(MASS)
+larvae = data_no_death$Num_Larvae
+b <- boxcox(lm(data_no_death$Num_Larvae ~ 1))
+lambda <- b$x[which.max(b$y)]
+lambda
+```
+
+Since $\lambda$ is close to .5, we will try a square root transformation:
+
+```{r}
+data_no_death = data_no_death |> 
+  mutate(Num_Larvae_trans = sqrt(Num_Larvae))
+```
+
+```{r}
+data_no_death |> 
+  ggplot(aes(x = Num_Larvae_trans)) +
+  geom_density()
+```
+
+This looks a lot better, but a left tail that is long.
+
+However, due to the fact n is large we can lean on the CLT to help us with multiple comparisons.
+
+```{r}
+model_larvae_1 <- lm(sqrt(Num_Larvae) ~ `Weight_Replete_Female(g)`+ 
+                        Vaccine_Group + Infestation + Vaccine_Group*Infestation,
+                        data = data_no_death)
+summary(model_larvae_1)
+```
+
+```{r}
+plot(model_larvae_1)
+```
+
+```{r}
+emm2 = emmeans(model_larvae_1, specs = ~ Vaccine_Group*Infestation,
+                      type = "response")
+emm2
+```
+
+```{r}
+em_df_2 = emm2 |> 
+  as.data.frame()
+```
+
+```{r}
+em_df_2 |> 
+  ggplot(aes(x = Infestation, y = response, color = Vaccine_Group, 
+             group = Vaccine_Group)) + 
+  geom_point() +
+  geom_line() +
+  geom_errorbar(aes(ymin = lower.CL,ymax = upper.CL, width = .1))
+```
+
+```{r}
+main_contrasts_2 = emmeans(model_larvae_1, specs = pairwise ~ Vaccine_Group|Infestation, type = "response")
+
+remm <- regrid(main_contrasts_2)
+
+contrasts <- contrast(remm,method = "pairwise") |> 
+  as.data.frame()
+```
+
+```{r}
+contrasts |> 
+  ggplot(aes(x = contrast, y = estimate)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 0, color = "red") +
+  geom_errorbar(aes(ymin = estimate - 2*SE,ymax = estimate + 2*SE, width = .1)) +
+  geom_text(aes(label = round(p.value,2)),nudge_x = .4) +
+  facet_wrap(~Infestation) +
+  ylab("Odds Ratio") +
+  xlab("Contrast") +
+  labs(title = "Vaccine Group Effects")
+```
