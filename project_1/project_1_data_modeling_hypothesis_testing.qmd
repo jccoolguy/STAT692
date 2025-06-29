@@ -9,6 +9,7 @@ editor: visual
 
 ```{r}
 library(tidyverse)
+library(emmeans)
 load("data_processed.RData")
 ```
 
@@ -34,6 +35,11 @@ The response variables are the mortality, and measurements of egg quality if the
 
 There was one covariate, the weight of the tick before being attached to the deer.
 
+```{r}
+data_no_pre <- data_processed |> 
+  filter(Infestation != "PRE")
+```
+
 # Collapsed Data for Plotting
 
 ```{r}
@@ -53,11 +59,6 @@ data_processed |>
 ```
 
 Since only six of the deer have observed pre-infestation testing, for simplicity and since our is to measure the time and overall effect of vaccines we will filter out that data:
-
-```{r}
-data_no_pre <- data_processed |> 
-  filter(Infestation != "PRE")
-```
 
 Lets see if there are any hints towards to a time trend in this data, particularly focusing on the vaccinated groups:
 
@@ -313,7 +314,7 @@ contrasts |>
   geom_errorbar(aes(ymin = estimate - 2*SE,ymax = estimate + 2*SE, width = .1)) +
   geom_text(aes(label = round(p.value,2)),nudge_x = .4) +
   facet_wrap(~Infestation) +
-  ylab("Odds Ratio") +
+  ylab("Mean Differences") +
   xlab("Contrast") +
   labs(title = "Vaccine Group Effects")
 ```

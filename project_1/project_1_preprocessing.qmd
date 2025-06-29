@@ -125,7 +125,7 @@ data |>
   filter(na_count %in%c(1,2,3,4))
 ```
 
-Since there are only 15 columns I feel its worth taking a look at each situation.
+Since there are only 15 rows I feel its worth taking a look at each situation.
 
 The first situation is "dram spilled no hatch data collected":
 
