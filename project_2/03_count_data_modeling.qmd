@@ -6,6 +6,7 @@ editor: visual
 
 ```{r}
 library(lme4)
+library(tidyverse)
 load("count_data.RData")
 ```
 
@@ -20,10 +21,37 @@ library(rstatix)
 ```
 
 ```{r}
-res.aov <- anova_test(
-  data = count_data, dv = total, wid = beaker,
-  between = c(water,temperature),
-  within = c(time)
-)
-res.aov
+#res.aov <- anova_test(
+#  data = count_data, dv = total, wid = beaker,
+#  between = c(water,temperature),
+#  within = c(time)
+#)
+#res.aov
+```
+
+```{r}
+model_test <- lmer(bud ~ time*temperature*water + (1|beaker), data = count_data)
+model_test
+```
+
+```{r}
+model_test_poisson <- glmer(bud ~ (1|beaker) + (temperature|time) 
+                            + water*temperature,
+                           data = count_data, family = poisson())
+summary(model_test_poisson)
+```
+
+```{r}
+library(Rmisc)
+pred_count_data <- count_data
+pred_count_data$bud <- predict(model_test_poisson)
+
+pred_count_data.summary <- summarySE(pred_count_data, measurevar = "bud",
+                                     groupvars = c("time","temperature","water")) |> 
+  mutate(treatment = str_c(temperature, water, " "))
+ggplot(pred_count_data.summary, aes(x = time, y = exp(bud), color = treatment)) +
+  geom_errorbar(aes(ymin = exp(bud - se), ymax = exp(bud + se)), width = .5) +
+  geom_line() +
+  theme_bw() +
+  geom_point(size = 3)
 ```

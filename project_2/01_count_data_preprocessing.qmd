@@ -26,7 +26,9 @@ count_data <- count_data |>
     widths = c(temperature = 2, water = 1, replicate = 1),
     cols_remove = FALSE
   ) |> 
-  pivot_wider(names_from = stage, values_from = count)
+  pivot_wider(names_from = stage, values_from = count) |> 
+  mutate(temperature = factor(temperature, c("20","28","33")),
+         water = factor(water, c("R","A")))
   
 ```
 
