@@ -1,0 +1,129 @@
+---
+title: "Project 2 Count Data Exploratory Analysis"
+author: "Jack Cunningham"
+format: html
+editor: visual
+---
+
+```{r, loading data}
+library(tidyverse)
+load("count_data.RData")
+```
+
+Data grouped by treatment:
+
+```{r}
+count_treatments <- count_data |>
+  mutate(treatment = str_c(temperature,water,sep = " ")) |> 
+  group_by(treatment, time) |>
+  summarise(avg_bud = mean(bud), avg_ephyra = mean(ephyra), 
+            avg_polyp = mean(polyp))
+```
+
+Data grouped by temp group:
+
+```{r}
+count_temp <- count_data |> 
+  group_by(temperature, time) |>
+  summarise(avg_bud = mean(bud), avg_ephyra = mean(ephyra), 
+            avg_polyp = mean(polyp))
+```
+
+Data grouped by water type:
+
+```{r}
+count_water <- count_data |> 
+  group_by(water, time) |> 
+  summarise(avg_bud = mean(bud), avg_ephyra = mean(ephyra), 
+            avg_polyp = mean(polyp))
+```
+
+# Treatment Plots
+
+## Buds
+
+To get a sense of the main effects of temperature and water treatment we plot the effects:
+
+```{r}
+count_temp |> 
+  ggplot(aes(x = time, y = avg_bud, col = temperature)) +
+  geom_point() +
+  geom_line()
+```
+
+It appears the low temperature is leading to the highest average bud counts. The medium temperature seems to decrease the number of buds over time, at the end being close to zero. The high temperature splits the middle, dropping harshly early but rebounding after.
+
+```{r}
+count_water |> 
+  ggplot(aes(x = time, y = avg_bud, col = water)) +
+  geom_point() +
+  geom_line()
+```
+
+For the most part the water type doesn't seem to be too different from each other, with the exception of the measurement at time 10. The count drops around to its bottom around time 15 and rebounds after.
+
+```{r}
+count_treatments |> 
+  ggplot(aes(x = time, y = avg_bud, col = treatment))+
+  geom_line()
+```
+
+It appears the effect of temperature is determining most of the change in the bud count as the trends follow what we have seen in the main effect temperature plot with only small deviations depending on the temperature. The exception is for the medium temperature where a gap opens at later times.
+
+# Ephyra
+
+```{r}
+count_temp |> 
+  ggplot(aes(x = time, y = avg_ephyra, col = temperature)) +
+  geom_point() +
+  geom_line()
+```
+
+The effect of temperature is interesting. It appears that there are no Ephyra are produced in the low temperature. In the medium temperature growth happens slowly but continuously, peaking at time 25 and tailing off. In high temperature growth happens extremely quickly, peaking at time 10 but dropping down to zero shortly after time 15. Does this indicate that Ephyra are bred somewhat easily in the high temperature but struggle to survive long?
+
+```{r}
+count_water |> 
+  ggplot(aes(x = time, y = avg_ephyra, col = water)) +
+  geom_point() +
+  geom_line()
+```
+
+It seems that there is a difference depending on water type. The antibiotic treated water seems to lead to high ephyra production after time passes, the difference is seen largest at times 10 and 24.
+
+```{r}
+count_treatments |> 
+  ggplot(aes(x = time, y = avg_ephyra, col = treatment)) +
+  geom_point() +
+  geom_line()
+```
+
+Interestingly the high temperature treatments lead to quicker growth of ephyra but it quickly drops to zero for both water types. For medium temperature we mainly see the pattern from the main effect of temperature but the antibiotic treated water seems to lead to higher growth of Ephyra.
+
+# Polyp
+
+```{r}
+count_temp |> 
+  ggplot(aes(x = time, y = avg_polyp, col = temperature)) +
+  geom_point() +
+  geom_line()
+```
+
+In the high temperature count we see that the polyp count jumps and then tails off. In the medium temperature we see the a slow increase of polyp that then slowly tails off. In the low temperature the count is largely steady.
+
+```{r}
+count_water |> 
+  ggplot(aes(x = time, y = avg_polyp, col = water)) +
+  geom_point() +
+  geom_line()
+```
+
+At early times the two water types are nearly impossible to discriminate from each other, but at later times as both counts tail off the antibiotic treated water correlates with higher average polyp's.
+
+```{r}
+count_treatments |> 
+  ggplot(aes(x = time, y = avg_polyp, col = treatment)) +
+  geom_point() +
+  geom_line()
+```
+
+The main treatments that differ are with high temperatures, where the antibiotic water seems much more suitable for maintaining the polyp population. The other four treatments are largely similar.

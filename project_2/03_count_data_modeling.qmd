@@ -1,0 +1,29 @@
+---
+title: "Count Data Modeling"
+format: html
+editor: visual
+---
+
+```{r}
+library(lme4)
+load("count_data.RData")
+```
+
+# Trying to Model
+
+```{r}
+glm(data = count_data, polyp ~ water*time*temperature, family = poisson())
+```
+
+```{r}
+library(rstatix)
+```
+
+```{r}
+res.aov <- anova_test(
+  data = count_data, dv = total, wid = beaker,
+  between = c(water,temperature),
+  within = c(time)
+)
+res.aov
+```

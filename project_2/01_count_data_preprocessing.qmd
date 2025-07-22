@@ -1,0 +1,37 @@
+---
+title: "Project 2 Preprocessing"
+author: "Jack Cunningham"
+format: html
+editor: visual
+---
+
+```{r, loading_packages}
+library(readxl)
+library(tidyverse)
+```
+
+Importing Count Data:
+
+```{r}
+count_data <- read_excel("Project3_S25_Data (1).xlsx", 
+                         sheet = "ABS_LongCountData")
+```
+
+Getting treatments:
+
+```{r}
+count_data <- count_data |> 
+  separate_wider_position(
+    beaker,
+    widths = c(temperature = 2, water = 1, replicate = 1),
+    cols_remove = FALSE
+  ) |> 
+  pivot_wider(names_from = stage, values_from = count)
+  
+```
+
+Saving Count Data:
+
+```{r}
+save(count_data, file = "count_data.RData")
+```
