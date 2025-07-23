@@ -1,0 +1,35 @@
+---
+title: "Experimental Design"
+format: html
+editor: visual
+---
+
+# Experimental Unit
+
+Beaker
+
+# Measurement Unit
+
+Various specimen in beaker (bud, ephyra, polyp).
+
+# Homogeneous Experimental Unit
+
+All polyps come from same tank.
+
+# Block
+
+No blocking.
+
+# Factors and Levels
+
+Water temperature $T=\{20\text{ low},28 \text{ ambient}, 33 \text{ high}\}$ . Fixed factor with three levels.
+
+Water treatment $W = \{\text{ASW} (\text{Regular Artifical Seawater)}, \text{Sterilized anti-biotic treated ASW}\}$. Fixed factor with two levels.
+
+# Treatment Structure
+
+3x2
+
+# Repeated Measurements
+
+Count Data: Counts of Buds/Ephyra/Polyp tracked biweekly. So 11 times each.
