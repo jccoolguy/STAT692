@@ -1,0 +1,37 @@
+---
+title: "Preprocessing Measurements"
+format: html
+editor: visual
+---
+
+```{r, loading packages}
+library(readxl)
+library(tidyverse)
+```
+
+Importing calyx data:
+
+```{r}
+calyx_data <- read_excel("Project3_S25_Data (1).xlsx", 
+                         sheet = "CalyxLongData")
+```
+
+Getting treatments:
+
+```{r}
+calyx_data <- calyx_data |> 
+  separate_wider_position(
+    beaker,
+    widths = c(temperature = 2, water = 1, replicate = 1),
+    cols_remove = FALSE
+  ) |> 
+  mutate(temperature = factor(temperature, c("20","28","33")),
+         water = factor(water, c("R","A")), time = factor(time, c(0,34))) |> 
+  mutate(treatment = str_c(temperature, water, sep = " "))
+```
+
+Saving calyx_data:
+
+```{r}
+save(calyx_data, file = "calyx_data.RData")
+```

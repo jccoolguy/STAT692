@@ -1,0 +1,100 @@
+---
+title: "Calyx Data Confirmatory Analysis"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(car)
+load("calyx_data.RData")
+```
+
+# Are all T0 samples the same
+
+Getting t = 0 data:
+
+```{r}
+t0_calyx_data <- calyx_data |> 
+  filter(time == 0)
+
+```
+
+To confirm that the samples do not differ based on the treatments they are assigned to we run an anova test:
+
+```{r}
+t0_model <- lm(measurement ~ treatment ,data = t0_calyx_data)
+anova(t0_model)
+```
+
+We can see that the distribution is symmetric and appears close to normal:
+
+```{r}
+par(mfrow = c(1,2))
+t0_calyx_data |> 
+  ggplot(aes(x = measurement)) + 
+  geom_density()
+
+t0_calyx_data |> 
+  ggplot(aes(sample = measurement)) +
+  geom_qq() +
+  geom_qq_line()
+```
+
+For a formal test of whether this data comes from a normal distribution we do a shapiro-wilk test:
+
+```{r}
+t0_calyx_data |> 
+  pull(measurement) |> 
+  shapiro.test()
+```
+
+Which does not reject the null hypothesis that this data was sampled from a normal distribution.
+
+So there is no evidence for the T0 samples being drawn from different distributions.
+
+# Are the T35 samples significantly different from one another across treatments?
+
+Getting T35 data:
+
+```{r}
+t35_calyx_data <- calyx_data |> 
+  filter(time == 34)
+```
+
+```{r}
+t35_calyx_data |>    
+  ggplot(aes(x = measurement, col = treatment)) +    
+  geom_density()
+```
+
+There seems to be evidence of the distribution of measurement being shifted depending on treatment. In particular the two with temperature of 20 are shifted to the right.
+
+We test this formally by creating a linear model and using anova to spot differences:
+
+```{r}
+t34_model <- lm(measurement ~ treatment ,data = t35_calyx_data)
+anova(t34_model)
+```
+
+We can reject the null hypothesis of no difference due to the treatment applied the 5% confidence level.
+
+# Are there differences between T0 and T35 between temperatures and microbe treatments?
+
+```{r}
+calyx_data |>
+  group_by(time,treatment) |> 
+  summarise(avg_measurement = mean(measurement)) |> 
+  ggplot(aes(x = time, y = avg_measurement)) +
+  geom_col() +
+  facet_wrap(~ treatment)
+```
+
+It appears that differences are seen after treatments are applied, but not totally sure what analysis would be appropriate.
+
+```{r}
+t0_t35_diff_model <- lm(measurement ~ time +temperature*water, data = calyx_data)
+Anova(t0_t35_diff_model)
+```
+
+Would we need to show the three way interaction being significant?

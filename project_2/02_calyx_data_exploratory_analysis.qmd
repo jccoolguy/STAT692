@@ -1,0 +1,77 @@
+---
+title: "Calyx Data Exploratory Analysis"
+format: html
+editor: visual
+---
+
+```{r}
+load("calyx_data.RData")
+library(tidyverse)
+```
+
+# Seeing distribution of Measurement
+
+```{r}
+calyx_data |> 
+  ggplot(aes(x = measurement)) + 
+  geom_density()
+```
+
+The overall distribution of measurement has two peaks, which suggests there are two different distributions. Let's look at the length split into the start and end of the experiment.
+
+```{r}
+calyx_data |> 
+  ggplot(aes(x = measurement)) +
+  geom_density()+
+  facet_wrap(~time)
+```
+
+At time 0 the measurement variable seems to be a symmetric distribution.
+
+```{r}
+calyx_data |> 
+  filter(time == 0) |> 
+  ggplot(aes(sample = measurement)) +
+  stat_qq() +
+  stat_qq_line()
+```
+
+This follows the normal distribution pretty closely.
+
+```{r}
+calyx_data |> 
+  filter(time == 0) |>
+  pull(measurement) |> 
+  shapiro.test()
+```
+
+And the shapiro-wilk test agrees.
+
+# Looking at T35
+
+```{r}
+calyx_data |> 
+  filter(time == 0) |> 
+  ggplot(aes(x = measurement, col = treatment)) + 
+  geom_density()
+```
+
+```{r}
+calyx_data |> 
+  filter(time == 34) |> 
+  ggplot(aes(x = measurement, col = treatment)) + 
+  geom_density()
+```
+
+There seems to be evidence of the distribution of measurement being shifted depending on treatment. In particular the two with temperature of 20 are shifted to the right.
+
+# Looking at T0 to T35 Split by Group
+
+```{r}
+calyx_data |>
+  group_by(time,treatment) |> 
+  summarise(avg_measurement = mean(measurement)) |> 
+  ggplot(aes(x = time, y = avg_measurement)) +
+  geom_col() +
+  facet_wrap(~ treatment)
+```
