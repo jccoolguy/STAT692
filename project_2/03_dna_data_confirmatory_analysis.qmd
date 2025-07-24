@@ -1,0 +1,43 @@
+---
+title: "DNA Data Confirmatory Analysis"
+author: "Jack Cunningham"
+format: html
+editor: visual
+---
+
+```{r}
+load("DNA_data.RData")
+```
+
+# Are the differences between samples significantly different from one another
+
+For the polyp DNA samples:
+
+```{r}
+polyp_Cq <- DNA_data |> 
+  filter(Sample_Type == "Polyp")
+```
+
+```{r}
+polyp_model <- lm(Cq ~ water*temperature + time, data = polyp_Cq)
+summary(polyp_model)
+anova(polyp_model)
+```
+
+Yes, they are different.
+
+For the water DNA sample:
+
+```{r}
+water_Cq = DNA_data |> 
+  filter(Sample_Type == "Water")
+```
+
+Model:
+
+```{r}
+water_model = lm(Cq ~ temperature*water, data = water_Cq)
+anova(water_model)
+```
+
+Yes, they are significantly different.

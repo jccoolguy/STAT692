@@ -1,0 +1,37 @@
+---
+title: "Ephyra Data Preprocessing"
+format: html
+editor: visual
+---
+
+```{r, loading_packages}
+library(readxl)
+library(tidyverse)
+```
+
+Importing Ephyra data:
+
+```{r}
+ephyra_data <- read_excel("Project3_S25_Data (1).xlsx", 
+                         sheet = "EphyraLongData")
+```
+
+Getting treatments:
+
+```{r}
+ephyra_data <- ephyra_data |> 
+  separate_wider_position(
+    beaker,
+    widths = c(temperature = 2, water = 1, replicate = 1),
+    cols_remove = FALSE
+  ) |> 
+  mutate(temperature = factor(temperature, c("20","28","33")),
+         water = factor(water, c("R","A"))) |> 
+  mutate(treatment = str_c(temperature, water, sep = " "))
+```
+
+Saving Data:
+
+```{r}
+save(ephyra_data, file = "ephyra_data.RData")
+```

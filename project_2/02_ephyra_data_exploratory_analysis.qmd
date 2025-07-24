@@ -1,0 +1,30 @@
+---
+title: "Ephyra Data Exploratory Analysis"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+load("ephyra_data.RData")
+```
+
+# Looking at total count of Ephyra and width
+
+```{r}
+ephyra_data |> 
+  filter(width != 0) |> 
+  group_by(temperature, water) |> 
+  summarize(n = n(), avg_width = mean(width))
+```
+
+It looks like the average width is largely determined by the temperature, lets look at a box plot by treatment.
+
+```{r}
+ephyra_data |> 
+  filter(width != 0) |> 
+  ggplot(aes(x = treatment, y = width)) + 
+  geom_boxplot()
+```
+
+It seems there is indeed a difference, driven primarily by the temperature of the water.

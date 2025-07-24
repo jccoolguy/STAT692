@@ -1,0 +1,42 @@
+---
+title: "DNA data preprocessing"
+format: html
+editor: visual
+---
+
+```{r, loading_packages}
+library(readxl)
+library(tidyverse)
+```
+
+Importing DNA data:\
+
+```{r}
+DNA_data <- read_excel("Project3_S25_Data (1).xlsx", 
+                         sheet = "Samples_qPCR")
+```
+
+Data preprocessing:
+
+```{r}
+DNA_data <- DNA_data |>
+  mutate(flag = substr(Treatment_Group, 1, 2) == "T0") |>
+  mutate(time = ifelse(flag,substr(Treatment_Group, 2, 2),
+                       substr(Treatment_Group, 2, 3))) |> 
+  mutate(temperature = ifelse(flag, substr(Treatment_Group,6,7),
+                       substr(Treatment_Group,7,8))) |> 
+  mutate(water = ifelse(flag, substr(Treatment_Group,9,9),
+                        substr(Treatment_Group,9,9))) |> 
+  mutate(rep = ifelse(flag, "NONE", substr(Treatment_Group,10,10)))|> 
+  mutate(temperature = factor(temperature, c("20","28","33")),
+         water = factor(water, c("R","A")),
+         time = factor(time, c(0,35))) |>
+  mutate(treatment = str_c(temperature, water, sep = " ")) |> 
+  select(-flag)
+```
+
+Saving Data:
+
+```{r}
+save(DNA_data, file = "DNA_data.RData")
+```

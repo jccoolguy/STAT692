@@ -1,0 +1,53 @@
+---
+title: "DNA Data Exploratory Analysis"
+author: "Jack C"
+format: html
+editor: visual
+---
+
+Loading Data/Packages
+
+```{r}
+library(tidyverse)
+load("DNA_data.RData")
+```
+
+# Looking at Cq at time 0 versus 35 for Polyps
+
+```{r}
+DNA_data |>
+  filter(Sample_Type == "Polyp") |> 
+  ggplot(aes(x = Cq, col = time)) +
+  geom_density()
+```
+
+We can see that just looking at time leads to an almost uniform distribution for time 35, lets see how each treatment differs.
+
+Before plotting, lets get an idea of the number of observations for each group:
+
+```{r}
+DNA_data |> 
+  filter(time == 35 & Sample_Type == "Polyp") |> 
+  group_by(treatment) |> 
+  summarize(avg_Cq = mean(Cq), n = n())
+```
+
+```{r}
+DNA_data |> 
+  filter((time == 35) &(Sample_Type == "Polyp")) |> 
+  ggplot(aes(x = Cq, col = treatment)) +
+  geom_boxplot()
+```
+
+The differences between samples seem to be significantly different than each other for the polyp data.
+
+# Looking at Cq at time 35 for Water
+
+```{r}
+DNA_data |> 
+  filter(Sample_Type == "Water") |> 
+  ggplot(aes(x = Cq, col = treatment)) +
+  geom_boxplot()
+```
+
+There is moderate evidence that the treatment affects the DNA sample of water.

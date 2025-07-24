@@ -93,8 +93,9 @@ calyx_data |>
 It appears that differences are seen after treatments are applied, but not totally sure what analysis would be appropriate.
 
 ```{r}
-t0_t35_diff_model <- lm(measurement ~ time +temperature*water, data = calyx_data)
+t0_t35_diff_model <- lm(measurement ~ time*temperature*water, data = calyx_data)
 Anova(t0_t35_diff_model)
+summary(t0_t35_diff_model)
 ```
 
 Would we need to show the three way interaction being significant?
