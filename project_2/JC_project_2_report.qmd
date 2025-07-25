@@ -87,7 +87,7 @@ calyx_data |>
   filter(time == 0) |> 
   ggplot(aes(x = treatment, y = measurement)) +
   geom_boxplot() +
-  labs(x = "Treatment", y = "Width", main = "Time 0 Polyp Samples") +
+  labs(x = "Treatment", y = "Width", title = "Time 0 Polyp Samples") +
   theme_bw()
 
 ```
