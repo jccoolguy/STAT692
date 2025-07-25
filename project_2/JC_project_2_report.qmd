@@ -1,0 +1,102 @@
+---
+title: "Jellyfish Experiment Analysis"
+author: "Jack Cunningham"
+format: pdf
+editor: visual
+---
+
+```{r,loading packages data,echo=FALSE,message=FALSE, warning=FALSE}
+library(tidyverse)
+load("calyx_data.RData")
+knitr::opts_chunk$set(echo = F)
+```
+
+# Goals
+
+The goal of this analysis is to assess how temperature and water treatments impact various measures of Jellyfish quality, specifically their physical characteristics, ability to reproduce or advance to the next life stage and DNA.
+
+# Experimental Design
+
+A sample of 50 Polyps are placed into 18 beakers. Those 18 beakers are evenly distributed across 6 treatments. There are two crossed factors, Water Temperature with three levels: (20 degrees 'low', 28 degrees 'ambient', 33 degrees 'high)' and Microbial Condition with two levels: (ASW 'Regular Artificial Salt Water', sterilized Antibiotic treated ASW 'Antibiotic treated Artificial Salt Water').
+
+Measurements with different methods are performed. I have broken them up as follows.
+
+### Count Measurements
+
+On a biweekly basis researchers count the number and stage of jellyfish development for each beaker. There are three stages tracked, Buds, Ephyra and Polyps.
+
+### Physical Measurements
+
+On a weekly basis researchers measure each Polyp's width and Ephyra's diameter.
+
+### DNA Measurements
+
+DNA from sampled Polyps are extracted at the start and end of the experiment. DNA is sampled from each beaker's water at the end of the experiment.
+
+# Analysis Results
+
+#### Are all the T0 samples the same (not significantly different)
+
+This question asks whether the polyp samples have widths that are not significantly different than each other.
+
+T0 samples will not have the exact same width, but since they are all subject to the same initial conditions they should be drawn from the same distribution. First we look at the estimated density function of polyp widths at time zero.
+
+```{r}
+calyx_data |> 
+  filter(time == 0) |> 
+  ggplot(aes(x = measurement)) +
+  geom_density() +
+  labs(title = "Estimated Density of Polyp Width at Time Zero") +
+  theme_bw()
+```
+
+This looks close to a normal distribution. I use a normal QQ plot to visually inspect further.
+
+```{r}
+calyx_data |> 
+  filter(time == 0) |> 
+  ggplot(aes(sample = measurement)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(x = "Theoretical Normal Quantiles", y = "Observed Polyp Widths",
+       title = "Normal QQ plot of Polyp Widths at Time 0") +
+  theme_bw()
+```
+
+Since the observed data follows the QQ line closely it appears the Polyp width for time 0 samples are from the same normal distribution.
+
+We can formally test whether this sample is from a normal distribution by using a Shapiro-Wilk test. So, we are testing:
+
+$$
+H_{0}:\text{Sample Obtained from Normal Distribution},H_{a}: \text{Sample Not Obtained from a Normal Distribution}
+$$
+
+```{r}
+width_time_0 <- calyx_data |> 
+  filter(time == 0) |>
+  pull(measurement)
+shapiro.test(width_time_0)
+```
+
+With a p-value of .1562 we cannot reject the null hypothesis that this sample is from a normal distribution.
+
+These results have shown that there is no evidence that time 0 polyp samples are drawn from separate distributions. But it would also be reassuring if we could show that the width of time 0 polyp samples are similar across treatments.
+
+```{r}
+calyx_data |>
+  filter(time == 0) |> 
+  ggplot(aes(x = treatment, y = measurement)) +
+  geom_boxplot() +
+  labs(x = "Treatment", y = "Width", main = "Time 0 Polyp Samples") +
+  theme_bw()
+
+```
+
+The median of polyp samples at time 0 appears consistent across treatments.
+
+```{r}
+t0_calyx_data <- calyx_data |> 
+  filter(time == 0)
+t0_model <- lm(measurement ~ water*temperature ,data = t0_calyx_data)
+anova(t0_model)
+```
