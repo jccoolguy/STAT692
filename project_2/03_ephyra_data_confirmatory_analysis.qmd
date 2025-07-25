@@ -1,0 +1,60 @@
+---
+title: "Ephyra Data Confirmatory Analysis"
+author: "Jack Cunningham"
+format: html
+editor: visual
+---
+
+# Loading Data and Packages:
+
+```{r}
+library(tidyverse)
+load("ephyra_data.RData")
+```
+
+# Introduction
+
+To begin, only four of the six treatments saw Ephyra transitions. For temperature 20 there were no Ephyra. So those two treatments will be excluded from the analysis of count and width.
+
+# Are there differences in Width for Ephyra
+
+```{r}
+ephyra_data |> 
+  filter(width != 0) |> 
+  ggplot(aes(x = treatment, y = width)) + 
+  geom_boxplot()
+```
+
+We exclude width measurements of zero as the missing values do not appear to have a pattern.
+
+```{r}
+ephyra_data_no_zero_width <-  ephyra_data |> 
+  filter(width != 0)
+```
+
+A cursory view shows that it appears temperature has a large impact on the width of ephyra. To verify this we model:
+
+```{r}
+width_model <- lm(width ~ temperature*water, data = ephyra_data_no_zero_width)
+anova(width_model)
+```
+
+We can see that temperature is significant in determining the eventual width of the Ephyra.
+
+# Are there differences in Count of Ephyra by treatment
+
+```{r}
+ephyra_count_data <-  ephyra_data |> 
+  filter(width != 0) |> 
+  group_by(temperature, water, replicate) |> 
+  summarise(n = n())
+```
+
+The count of ephyra seems to depend mainly on water. Lets see if our model confirms that:
+
+```{r}
+count_model <- glm(n ~ temperature*water, data = ephyra_count_data,
+                   family = poisson())
+anova(count_model)
+summa
+```
