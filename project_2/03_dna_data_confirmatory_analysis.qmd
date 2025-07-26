@@ -38,6 +38,16 @@ Model:
 ```{r}
 water_model = lm(Cq ~ temperature*water, data = water_Cq)
 anova(water_model)
+
+water_model_means = emmeans(water_model, specs = ~ water*temperature) |>
+  as.data.frame() |> 
+  mutate(treatment = str_c(temperature, water, sep = " "))
+
+water_model_means |> 
+  ggplot(aes(x = treatment, y = emmean)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = emmean - 2*SE, ymax = emmean + 2*SE, width = .1)) +
+  labs(title = "Estimated Marginal Means Time 35")
 ```
 
 Yes, they are significantly different.

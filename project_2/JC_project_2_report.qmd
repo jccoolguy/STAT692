@@ -7,7 +7,11 @@ editor: visual
 
 ```{r,loading packages data,echo=FALSE,message=FALSE, warning=FALSE}
 library(tidyverse)
+library(emmeans)
+library(car)
 load("calyx_data.RData")
+load("DNA_data.RData")
+load("count_data.RData")
 knitr::opts_chunk$set(echo = F)
 ```
 
@@ -34,6 +38,8 @@ On a weekly basis researchers measure each Polyp's width and Ephyra's diameter.
 DNA from sampled Polyps are extracted at the start and end of the experiment. DNA is sampled from each beaker's water at the end of the experiment.
 
 # Analysis Results
+
+## Polyp Width Data
 
 #### Are all the T0 samples the same (not significantly different)
 
@@ -94,9 +100,274 @@ calyx_data |>
 
 The median of polyp samples at time 0 appears consistent across treatments.
 
+To formally test whether sample widths are different depending on treatments we fit the model:
+
+$$
+y_{ijk}=\mu+w_i+t_j+w_it_j+e_{ijk}, \quad i=1,2, \quad j=1,2,3 \quad k= 1,...,15
+$$
+
+Where $y_{ijk}$ is the width of the polyp sample, $w_i$ is the water treatment $i$ , $t_j$ is temperature treatment $j$.
+
+We obtain an ANOVA table to test:
+
+$$
+H_{0}:w_i=0,t_j=0,w_it_j=0 \quad H_a: w_i \neq 0, t_j \neq 0,w_it_j \neq0 
+$$
+
 ```{r}
 t0_calyx_data <- calyx_data |> 
   filter(time == 0)
 t0_model <- lm(measurement ~ water*temperature ,data = t0_calyx_data)
 anova(t0_model)
 ```
+
+We cannot reject the null hypothesis that there is no difference in sample means across treatments.
+
+All evidence points in the direction of time 0 polyp samples being the same (not significantly different).
+
+#### Are the T35 samples significantly different from one another across treatments?
+
+After treatments are applied, samples are drawn again.
+
+```{r}
+t35_calyx_data <- calyx_data |> 
+  filter(time == 34)
+t35_calyx_data |> 
+  ggplot(aes(x = treatment, y = measurement)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(title = "Sample widths at time 35")
+```
+
+A box-plot indicates that there does appear to be treatment effects.
+
+We formally test this using the same model as before, but on the time 35 samples.
+
+```{r}
+t35_model <- lm(measurement ~ water*temperature ,data = t35_calyx_data)
+anova(t35_model)
+```
+
+We reject the null hypothesis of $w_i t_j=0$ at any reasonable choice of a p-value. There is a treatment effect and an interaction effect between water and temperature.
+
+```{r}
+t35_emmeans <- emmeans(t35_model, specs = ~ water*temperature) |> 
+  as.data.frame() |>
+  mutate(treatment = str_c(temperature,water,sep = " "))
+t35_emmeans |> 
+  ggplot(aes(x = treatment, y = emmean)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL, width = .1)) +
+  theme_bw() +
+  labs(title = "Estimated Response Means for Time 35 Samples", 
+       y = "Estimated Width")
+```
+
+A plot of the estimated response means shows that, as reported in our anova table, the interaction between temperature and water is significant. For temperature 20 regular water and artificial water have similar widths, in the other two temperatures artificial water leads to higher widths.
+
+The biggest takeaway is the impact of temperature, as temperature gets higher the widths of polyps get smaller.
+
+T35 samples are significantly different from one another across treatments.
+
+#### Are there differences between T0 and T35 between temperatures and microbe treatments
+
+```{r}
+calyx_data |>
+  group_by(time,treatment) |> 
+  summarise(avg_measurement = mean(measurement)) |> 
+  ggplot(aes(x = time, y = avg_measurement)) +
+  geom_col() +
+  facet_wrap(~ treatment) +
+  theme_bw() +
+  labs(title = "Average Polyp Sample Width as Time Changes",
+       y = "Average Polyp Width")
+```
+
+There is initial evidence pointing towards differences between treatments, for low temperatures widths seem to increase for high temperatures widths seem to decrease. The impact of water treatment seems to depend on the temperature of the water.
+
+With these findings, we fit the model:
+
+$$
+y_{ijkl}=\mu+w_i+t_j+w_it_j+s_{k}+s_kw_i+s_kt_j+e_{ijkl}, \quad i=1,2, \quad j=1,2,3 \quad k= 1,2, \quad l = 1,...,n_{ijk}
+$$
+
+Where $y_{ijkl}$ is the width of the polyp sample, $w_i$ is the water treatment $i$ , $t_j$ is temperature treatment $j$, $s_k$ is an indicator variable for whether the sample was performed at the start (time 0) or end (time 35) of the treatment. Of note $n_{ijk}$, the number of observations in each treatment, time group is uneven as there as more samples are conducted at the end of the experiment.
+
+We will first test the significance of $s_k,s_k w_i,s_k t_j$ and then conduct contrasts between each treatment at time 0 and time 35.
+
+```{r}
+t0_t35_diff_model <- lm(measurement ~ temperature*water + 
+                          time*temperature*water, data = calyx_data)
+Anova(t0_t35_diff_model, type = "III")
+```
+
+We see that the two-way interaction between the sample time $s_k$ and temperature $t_j$ is significant. This indicates that the effect depends on temperature. The two-way interaction between the sample time $s_k$ and water treatment $w_i$ is not significant.
+
+```{r}
+t0_35_contrasts = emmeans(t0_t35_diff_model, 
+                          specs = pairwise ~ time|temperature*water)$contrasts |> 
+  as.data.frame() |> 
+  mutate(treatment = str_c(temperature, water, sep = " ")) |> 
+  mutate(estimate = -estimate)
+t0_35_contrasts |> 
+  ggplot(aes(x = treatment, y = estimate)) +
+  geom_point()+
+  geom_abline(intercept = 0, slope = 0, color = "red") +
+  geom_errorbar(aes(ymin = estimate - 2*SE, ymax = estimate + 2*SE, width = .1)) +
+  geom_text(aes(label = round(p.value,3)), nudge_x = .3) +
+  labs(title = "Time 35 - Time 0 Width Contrasts", y = "Width Difference",
+       x = "Treatment") +
+  theme_bw()
+```
+
+We have plotted the contrasts of time 35 - time 0 polyp widths.
+
+We test:
+
+$$
+H_0:T35-T0=0; T_{35}-T0 \neq 0
+$$
+
+To the right of each confidence interval we have the tukey adjusted p-value of this test.
+
+The only treatment that does not differ over time is the treatment where temperature is 28 and water is antibiotic treated. All other treatments have differences between time 0 and time 35 between treatments.
+
+For most treatments there is a difference between time 0 and time 35, but the nature of that difference depends primarily on the temperature of the water. For low temperatures the width of polyps are larger after the treatments are applied, for high temperatures the widths are smaller.
+
+## DNA Data
+
+#### Are there differences between samples significantly different (across temperatures and microbe) significantly different from one another?
+
+DNA samples were done on polyps and water. We start with the polyp samples.
+
+```{r}
+polyp_Cq <- DNA_data |> 
+  filter(Sample_Type == "Polyp")
+polyp_Cq |> 
+  ggplot(aes(x = time, y= Cq)) +
+  geom_boxplot() +
+  facet_wrap(~treatment) +
+  labs(title = "Quantification Cycle across Treatments and Time") +
+  theme_bw()
+```
+
+The response variable $C_q$ is the Quantification Cycle, the cycle number where we can detect bacterial load. A low $C_q$ indicates a high presence of bacterial load.
+
+It appears that antibiotic treated water leads to lower $C_q$ compared to regular water across all treatments.
+
+Time 0 samples are all quite similar to each other, so we focus our analysis to time 35 samples.
+
+So we fit the model:
+
+$$
+y_{ijk}=\mu+w_i+t_j+w_it_j+e_{ijk}, \quad i=1,2, \quad j=1,2,3 \quad k= 1,..,9
+$$
+
+Where $y_{ijkl}$ is the $C_q$ measure of the sample, $w_i$ is the water treatment $i$ , and $t_j$ is temperature treatment $j$.
+
+We use the ANOVA table to look for the significance of each effect.
+
+Then look at the contrasts across main effects.
+
+```{r}
+polyp_Cq_35 <- polyp_Cq |> 
+  filter(time == 35)
+polyp_model_35 <- lm(Cq ~ water*temperature, data = polyp_Cq_35)
+anova(polyp_model_35)
+```
+
+The estimated means are plotted:
+
+```{r}
+
+polyp_model_35_emmeans = emmeans(polyp_model_35, specs = ~ water*temperature) |>
+  as.data.frame() |> 
+  mutate(treatment = str_c(temperature, water, sep = " "))
+
+avg_Cq_time_0 <- DNA_data |> 
+  filter(time == 0) |> 
+  group_by(time) |> 
+  summarise(avg_Cq = mean(Cq)) |> 
+  pull(avg_Cq)
+
+polyp_model_35_emmeans |> 
+  ggplot(aes(x = treatment, y = emmean)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = emmean - 2*SE, ymax = emmean + 2*SE, width = .1)) +
+  geom_abline(intercept = avg_Cq_time_0, slope = 0, color = "red") +
+  labs(title = "Estimated Marginal Means Time 35, Time 0 Sample baseline",
+       y = "Estimated Cq") +
+  theme_bw()
+  
+```
+
+We can see that the antibiotic treated water always has a $C_q$ larger than regular water in the same temperature. As temperature increases $C_q$ generally drops.
+
+The water, temperature effect is significant. So we will look at the main effect of water at each level of temperature. And the look at the main effect of temperature at each level of water.
+
+```{r}
+polyp_model_constrasts_water = emmeans(polyp_model_35, 
+                                 specs = pairwise ~ water|temperature)$contrasts |> 
+  as.data.frame() |> 
+  mutate(estimate = - estimate)
+polyp_model_constrasts_water |> 
+  ggplot(aes(x = temperature, y = estimate)) +
+  geom_point()+
+  geom_abline(intercept = 0, slope = 0, color = "red") +
+  geom_errorbar(aes(ymin = estimate - 2*SE, ymax = estimate + 2*SE, width = .1)) +
+  geom_text(aes(label = round(p.value,3)), nudge_x = .3) +
+  labs(title = "Antibiotic - Regular Water Contrasts", y = "Cq Difference",
+       x = "Treatment") +
+  ylim(-.5,8) +
+  theme_bw()
+
+```
+
+We can see that antibiotic water has much higher $C_q$ compared to regular water at each temperature. All tests of $H_0:C_i=0$ are rejected at any reasonable p-value. The effect of water treatment is great.
+
+```{r}
+polyp_model_constrasts_temp = emmeans(polyp_model_35, 
+                                 specs = pairwise ~ temperature|water)$contrasts |> 
+  as.data.frame() |> 
+  mutate(contrast = str_c(substr(contrast,12,13)," - ", 
+                           substr(contrast,28,29 )))
+polyp_model_constrasts_temp |> 
+  ggplot(aes(x = contrast, y = estimate)) +
+  geom_point()+
+  geom_abline(intercept = 0, slope = 0, color = "red") +
+  geom_errorbar(aes(ymin = estimate - 2*SE, ymax = estimate + 2*SE, width = .1)) +
+  geom_text(aes(label = round(p.value,3)), nudge_x = .3) +
+  labs(title = "Temperature Contrasts", y = "Cq Difference",
+       x = "Contrast") +
+  facet_wrap(~ water) +
+  theme_bw()
+```
+
+Given untreated water, $C_q$ is significantly different across all temperature combinations at a p-value of 0.05. As differences in temperature get larger, the differences in $C_q$ get larger as well. Colder temperatures have higher $C_q$.
+
+Given treated water, $C_q$ is significantly different across all treatment combinations at a p-value 0.05. The nature of that comparison depends on the contrast. The 20 - 28 contrast is negative, in this case the colder temperature has a lower $C_q$. The two other contrasts continue the general pattern we have seen, as temperature gets colder $C_q$ increases.
+
+If we were seeking to minimize bacterial load, and thus maximize $C_q$ we should choose the temperature of 33 and treat the water with antibiotics.
+
+The general trend holds for water samples, so I have left out that analysis.
+
+I would also recommend using $C_q$ as the measurement of bacterial load, as its close to normal distribution allows for easy comparisons.
+
+## Count Data
+
+#### Are trends across temperatures significant?
+
+This part of the analysis is focused mainly on buds. A complication in the analysis is that as jellyfish develop through life stages they lose the ability to asexually reproduce. So assessment of which treatment to choose depends on whether the goal is to encourage reproduction, or encourage development.
+
+```{r}
+count_treatments |> 
+  ggplot(aes(x = time, y = avg_bud, col = treatment))+
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  labs(title = "Buds over Time", y = "Average Bud Count") 
+```
+
+An initial analysis shows that lower temperatures encourage higher numbers of bud count while higher temperatures lead to lower numbers. This is mainly because in the temperature of 20 we don't see any development into Ephyra, so we have more polyps to reproduce.
+
+Generally the difference between regular and antibiotic treated water is not large.
