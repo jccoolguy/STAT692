@@ -368,6 +368,54 @@ count_treatments |>
   labs(title = "Buds over Time", y = "Average Bud Count") 
 ```
 
-An initial analysis shows that lower temperatures encourage higher numbers of bud count while higher temperatures lead to lower numbers. This is mainly because in the temperature of 20 we don't see any development into Ephyra, so we have more polyps to reproduce.
+An initial analysis shows that temperatures appear to have different trends over time. For example, in the temperature of 20 we don't see any development into Ephyra, so we have more polyps to reproduce. This leads to an increasing trend in buds.
 
 Generally the difference between regular and antibiotic treated water is not large.
+
+A model to demonstrate the trends across temperatures are significant is:
+
+$$
+y_{ijkl} = \text{temp}_i+\text{time}_j+\text{temp}_i \text{time}_j + \text{beaker}(\text{time}_j)_{k}, \quad i=1,2,3 \quad k = 1,...35 \quad k=1,2,3
+$$
+
+The beaker, which is nested inside time, is a random effect. We use poisson regression to adjust for the fact that the response is a count variable. We drop the water effect, because if we use it we run against issues with over populating the model.
+
+```{r}
+model_goal_one <- glmer(bud ~ (time|beaker) + temperature
+                              + time*temperature,
+                           data = count_data, family = poisson())
+Anova(model_goal_one)
+```
+
+Since the interaction between temperature and time is significant, we can state that trend differences across temperatures are significant.
+
+The estimated means from the model are below:
+
+```{r}
+pred_count_data <- count_data
+pred_count_data$bud <- predict(model_goal_one)
+
+pred_count_data.summary <- summarySE(pred_count_data, measurevar = "bud",
+                                     groupvars = c("time","temperature"))
+ggplot(pred_count_data.summary, aes(x = time, y = exp(bud), color = temperature)) +
+  geom_errorbar(aes(ymin = exp(bud - se), ymax = exp(bud + se)), width = .5) +
+  geom_line() +
+  theme_bw() +
+  geom_point(size = 3) +
+  labs(title = "Estimated Means", y = "Average Bud Count")
+```
+
+At temperature 20 we quadratic growth, at temperature 33 we see a negative linear relationship with time. And at temperature 28 we see a concave upward decreasing curve.
+
+Its important to note that this is highly related to whether polyps are developing into a new stage, or staying static and continuing to reproduce.
+
+#### Are the differences within a temperature between microbe treatments significant?
+
+As previously mentioned, we could not add the water treatment to the temporal model. So we attempt to answer this question by collapsing the data across time and modeling in a different way.
+
+```{r}
+collapsed_count_data <- count_data |> 
+  group_by(temperature,water,beaker)
+  
+  
+```
