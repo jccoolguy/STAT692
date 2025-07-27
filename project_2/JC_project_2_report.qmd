@@ -6,13 +6,19 @@ editor: visual
 ---
 
 ```{r,loading packages data,echo=FALSE,message=FALSE, warning=FALSE}
+library(Rmisc)
 library(tidyverse)
 library(emmeans)
 library(car)
+library(lme4)
+library(rstatix)
+library(utils)
 load("calyx_data.RData")
 load("DNA_data.RData")
 load("count_data.RData")
+load("ephyra_data.RData")
 knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(warning = F)
 ```
 
 # Goals
@@ -360,6 +366,12 @@ I would also recommend using $C_q$ as the measurement of bacterial load, as its 
 This part of the analysis is focused mainly on buds. A complication in the analysis is that as jellyfish develop through life stages they lose the ability to asexually reproduce. So assessment of which treatment to choose depends on whether the goal is to encourage reproduction, or encourage development.
 
 ```{r}
+count_treatments <- count_data |>
+  mutate(treatment = str_c(temperature,water,sep = " ")) |> 
+  group_by(treatment, time) |>
+  summarise(avg_bud = mean(bud), avg_ephyra = mean(ephyra), 
+            avg_polyp = mean(polyp))
+
 count_treatments |> 
   ggplot(aes(x = time, y = avg_bud, col = treatment))+
   geom_point() +
@@ -375,7 +387,7 @@ Generally the difference between regular and antibiotic treated water is not lar
 A model to demonstrate the trends across temperatures are significant is:
 
 $$
-y_{ijkl} = \text{temp}_i+\text{time}_j+\text{temp}_i \text{time}_j + \text{beaker}(\text{time}_j)_{k}, \quad i=1,2,3 \quad k = 1,...35 \quad k=1,2,3
+y_{ijkl} = \text{temp}_i+\text{time}_j+\text{temp}_i \text{time}_j + \text{beaker}(\text{time}_j)_{k}, \quad i=1,2,3 \quad j = 1,3,7,10,...35 \quad k=1,2,3
 $$
 
 The beaker, which is nested inside time, is a random effect. We use poisson regression to adjust for the fact that the response is a count variable. We drop the water effect, because if we use it we run against issues with over populating the model.
@@ -395,14 +407,17 @@ The estimated means from the model are below:
 pred_count_data <- count_data
 pred_count_data$bud <- predict(model_goal_one)
 
+
 pred_count_data.summary <- summarySE(pred_count_data, measurevar = "bud",
                                      groupvars = c("time","temperature"))
 ggplot(pred_count_data.summary, aes(x = time, y = exp(bud), color = temperature)) +
-  geom_errorbar(aes(ymin = exp(bud - se), ymax = exp(bud + se)), width = .5) +
+  geom_errorbar(aes(ymin = exp(bud - 2*se), ymax = exp(bud + 2*se)), width = .5) +
   geom_line() +
   theme_bw() +
   geom_point(size = 3) +
   labs(title = "Estimated Means", y = "Average Bud Count")
+
+
 ```
 
 At temperature 20 we quadratic growth, at temperature 33 we see a negative linear relationship with time. And at temperature 28 we see a concave upward decreasing curve.
@@ -413,9 +428,264 @@ Its important to note that this is highly related to whether polyps are developi
 
 As previously mentioned, we could not add the water treatment to the temporal model. So we attempt to answer this question by collapsing the data across time and modeling in a different way.
 
+Since we are averaging over 11 observations of time, the bud variable approaches normality. So we can fit a weighted linear model, adjusting for $Var(y_{ijk})=\sigma^2/11$.
+
+Since we saw some evidence that the relationship between water and temperature exists, particularly for temperature 33, we include the interaction term.
+
+So our model is:
+
+$$
+y_{ijk}=\mu+w_i+t_j+w_it_j+e_{ijk},\quad i=1,2,3 \quad j = 1,2 \quad k=1,2,3
+$$
+
+Where $y_{ijk}$ is the average bud count for beaker k with treatment of water $w_i$ and temperature $t_j$ and $Var(e_{ijk})=\sigma^2/11$.
+
+First we fit the model and analyze the significance of terms, then we will look at contrasts between water treatments.
+
 ```{r}
 collapsed_count_data <- count_data |> 
-  group_by(temperature,water,beaker)
-  
-  
+  group_by(temperature,water,beaker) |>
+  summarise(avg_bud = mean(bud),n = n())
+
+model_collasped_count <- lm(avg_bud ~ water*temperature,
+                            data = collapsed_count_data, weights = rep(1/11,18))
+anova(model_collasped_count)
+```
+
+Since the water, temperature interaction term is significant we need to analyze the contrasts between water at each temperature.
+
+```{r}
+model_collasped_contrasts = emmeans(model_collasped_count,
+                                 specs = pairwise ~ water|temperature)$contrasts |>
+  as.data.frame()
+model_collasped_contrasts |> 
+  ggplot(aes(x = temperature, y = estimate)) +
+  geom_point()+
+  geom_abline(intercept = 0, slope = 0, color = "red") +
+  geom_errorbar(aes(ymin = estimate - 2*SE, ymax = estimate + 2*SE, width = .1)) +
+  geom_text(aes(label = round(p.value,3)), nudge_x = .3) +
+  labs(title = "Regular - Antibiotic Constrasts", y = "Bud Count Difference",
+       x = "Temperature") +
+  theme_bw()
+```
+
+Temperature 33 is the only time the water treatment effect contrast is significantly different than 0. That contrast found regular water to be associated with less buds than antibiotic water.
+
+### Ephyra Data
+
+#### What factors are significant for determining the number of Ephyra produced?
+
+Unfortunately in the data provided we are unable to obtain an accurate sum of ephyra in each beaker since the count data will include duplicate counts. However, we can model the total sum as an estimate.
+
+```{r}
+ephyra_count_data <- count_data |>  
+  group_by(temperature,water,beaker) |> 
+  summarise(ephyra_sum = sum(ephyra)) |> 
+  mutate(treatment = str_c(temperature,water,sep = " "))
+ephyra_count_data |> 
+  ggplot(aes(x = treatment,y = ephyra_sum)) +
+  geom_boxplot() +
+  labs(x = "Treatment", y = "Sum of Ephyra") +
+  theme_bw()
+```
+
+On an initial pass it appears both water and temperature are strong effects in determining Ephyra count. As previously noted, there is no Ephyra production at temperature 20. There does not appear to be an interaction between water and temperature, the drop off in count seems consistent under both temperatures.
+
+For the sake of modeling, we leave out the temperature of 20 data since we are sure to run into a problem with uneven variance:
+
+We fit the model:
+
+$$
+y_{ijk}=\mu +w_i+t_j+w_it_j+e_{ijk}, \quad i=1,2 \quad j=1,2,3 \quad k = 1,2,3
+$$
+
+First, we use an ANOVA table to see what effects are significant:
+
+```{r}
+ephyra_count_data_no_20 <- ephyra_count_data |> 
+  filter(temperature != 20)
+
+ephyra_count_model = lm(ephyra_sum ~ water*temperature, 
+                        data = ephyra_count_data_no_20)
+anova(ephyra_count_model)
+```
+
+As figured from the visual inspection, the interaction term is not significant. Both the water and temperature effects are significant.
+
+We look at the contrasts of both:
+
+```{r}
+ephyra_count_constrasts_temp = emmeans(ephyra_count_model,
+                                 specs = pairwise ~ temperature)$contrasts |>
+  as.data.frame()
+ephyra_count_constrasts_temp |> 
+  ggplot(aes(x = contrast, y = estimate)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 0, color = "red") +
+  geom_errorbar(aes(ymin = estimate - 2*SE, ymax = estimate + 2*SE, width = .1)) +
+  geom_text(aes(label = round(p.value,3)), nudge_x = .3) +
+  labs(title = "Temperature 28 - Temperature 33 Contrast", y = "Ephyra Count Difference") +
+  theme_bw() +
+  ylim(-1,25)
+```
+
+The contrast of the Ephyra count between temperature 28 and temperature 33 is significantly different from 0 at a p-value of 0.05. Temperature 28 is associated with 15 more buds than temperature 33.
+
+```{r}
+ephyra_count_constrasts_water = emmeans(ephyra_count_model,
+                                 specs = pairwise ~ water)$contrasts |>
+  as.data.frame()
+ephyra_count_constrasts_water |> 
+  ggplot(aes(x = contrast, y = estimate)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 0, color = "red") +
+  geom_errorbar(aes(ymin = estimate - 2*SE, ymax = estimate + 2*SE, width = .1)) +
+  geom_text(aes(label = round(p.value,3)), nudge_x = .3) +
+  labs(title = "Regular Water - Antibiotic Water Contrast", y = "Ephyra Count Difference") +
+  theme_bw() +
+  ylim(-30,1)
+```
+
+The contrast of the Ephyra count between regular water and antibiotic water is significantly different from 0 at a p-value of 0.05. Regular water is associated with about 15 less Ephyra when compared to antibiotic water.
+
+Both water and temperature are meaningful factors for determining how many Ephyra will be produced, however these results are only an estimate because we do not have access to a unique count of Ephyra produced in each beaker.
+
+#### What factors are significant for determining Ephyra Widths?
+
+Measurements of Ephyra width were only performed for the first replicate of each treatment's beaker.
+
+```{r}
+ephyra_data |> 
+  filter(width != 0) |> 
+  ggplot(aes(x = treatment, y = width)) + 
+  geom_boxplot() +
+  labs(title = "Ephyra Width") +
+  theme_bw()
+```
+
+A visual inspection suggests that temperature has a meaningful effect while water has a smaller effect. There does not appear to be an interaction.
+
+We fit a similar model to before:
+
+$$
+y_{ijk}=\mu +w_i+t_j+w_it_j+e_{ijk}, \quad i=1,2 \quad j=1,2,3 \quad k = 1,2,..n_{ij}
+$$
+
+```{r}
+ephyra_data_no_zero_width <-  ephyra_data |> 
+  filter(width != 0)
+ephyra_data_width_model <- lm(width ~ water*temperature, 
+                              data = ephyra_data_no_zero_width)
+
+Anova(ephyra_data_width_model, type = "III")
+```
+
+The interaction term is not significant, but the main effects of water and temperature are. So we compute their contrasts.
+
+```{r}
+ephyra_width_constrasts_temp = emmeans(ephyra_data_width_model,
+                                 specs = pairwise ~ temperature)$contrasts |>
+  as.data.frame()
+ephyra_width_constrasts_temp |> 
+  ggplot(aes(x = contrast, y = estimate)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 0, color = "red") +
+  geom_errorbar(aes(ymin = estimate - 2*SE, ymax = estimate + 2*SE, width = .1)) +
+  geom_text(aes(label = round(p.value,3)), nudge_x = .3) +
+  labs(title = "Temperature 28 - Temperature 33 Contrast", y = "Width Difference") +
+  theme_bw() +
+  ylim(0,2.5)
+```
+
+The contrast of the Ephyra width between temperature 28 and temperature 33 is significantly different from 0 at any reasonable p-value. A temperature of 28 is associated with a 1.75 cm (unit not provided by researcher) increase in Ephyra width when compared to a temperature of 33.
+
+```{r}
+ephyra_width_constrasts_water = emmeans(ephyra_data_width_model,
+                                 specs = pairwise ~ water)$contrasts |>
+  as.data.frame()
+ephyra_width_constrasts_water |> 
+  ggplot(aes(x = contrast, y = estimate)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 0, color = "red") +
+  geom_errorbar(aes(ymin = estimate - 2*SE, ymax = estimate + 2*SE, width = .1)) +
+  geom_text(aes(label = round(p.value,3)), nudge_x = .3) +
+  labs(title = "Regular Water - Antibiotic Water Contrast", y = "Width Difference") +
+  theme_bw() +
+  ylim(0,2)
+```
+
+The contrast of the Ephyra width between regular water and antibiotic treated water is significantly different from 0 at any reasonable p-value. However the size of effect is quite small, regular water is associated with a .025 cm increase in Ephyra Width over the antibiotic treated water. This might not be a meaningful difference.
+
+# Conclusion
+
+After investigating various measures, the choice of treatment depends on priorities.
+
+If the goal is to encourage reproduction and maintain the polyp strength and polyp population, you would want to choose lower temperatures. These lower temperatures prevent the jellyfish from developing to new life stages,
+
+If the goal is for jellyfish to continue to develop, choose a temperature of 28. This temperature seems to be a happy medium for development, the most amount of Ephyra were produced and their widths were longer than those at temperature 33.
+
+Temperature 33 seems to be a weak option, the widths of both polyp and ephyra samples were smaller and it does not seem to have a clear strength. It produces some Ephyra, but not as many as temperature 28 and maintains some bud population, but not as much as temperature 22.
+
+It appears that applying an antibiotic water treatment is a good idea. It is strongly associated with a higher quantification cycle, which indicates that bacterial load is lower than regular water. It also some association with better polyp widths, an indication of stronger jellyfish.
+
+Next steps would be to re-analyze Ephyra data if a unique count is available, and extend research to the Medusa life stage if it is of interest.
+
+# Appendix
+
+## Residual plots for models used:
+
+time 0 sample model:
+
+```{r, fig.width=6,fig.height=6}
+par(mfrow = c(2,2))
+plot(t0_model)
+```
+
+time 35 sample model:
+
+```{r, fig.width=6,fig.height=6}
+par(mfrow = c(2,2))
+plot(t35_model)
+```
+
+time 0, time 35 sample model:
+
+```{r, fig.width=6,fig.height=6}
+par(mfrow = c(2,2))
+plot(t0_t35_diff_model)
+```
+
+polyp width model:
+
+```{r, fig.width=6,fig.height=6}
+par(mfrow = c(2,2))
+plot(polyp_model_35)
+```
+
+bud count model:
+
+```{r, fig.width=6,fig.height=6}
+par(mfrow = c(2,2))
+plot(model_goal_one)
+```
+
+bud count model collapsed over time:
+
+```{r, fig.width=6,fig.height=6}
+par(mfrow = c(2,2))
+plot(model_collasped_count)
+```
+
+ephyra count model:
+
+```{r, fig.width=6,fig.height=6}
+par(mfrow = c(2,2))
+plot(ephyra_count_model)
+```
+
+ephyra width model:
+
+```{r, fig.width=6,fig.height=6}
+par(mfrow = c(2,2))
+plot(ephyra_data_width_model)
 ```
